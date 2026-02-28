@@ -1,0 +1,92 @@
+name: Sync Upstream & Build
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Daily at 6am UTC
+  workflow_dispatch:       # Manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  sync-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout fork (full history for rebase)
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # 2. Configure git
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # 3. Sync with upstream
+      - name: Sync upstream
+        id: sync
+        run: |
+          git remote add upstream https://github.com/badlogic/pi-mono.git
+          git fetch upstream main
+
+          UPSTREAM_HEAD=$(git rev-parse upstream/main)
+          FORK_BASE=$(git merge-base HEAD upstream/main)
+
+          if [ "$UPSTREAM_HEAD" = "$FORK_BASE" ]; then
+            echo "Already up to date with upstream"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Upstream has new commits, rebasing..."
+            git rebase upstream/main
+            git push --force-with-lease origin main
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      # 4. Setup Node.js
+      - uses: actions/setup-node@v4
+        if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        with:
+          node-version: '22'
+
+      # 5. Install and build
+      - name: Install and build
+        if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          npm install
+          npm run build
+
+      # 6. Package the coding-agent as a tarball
+      - name: Package
+        if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          cd packages/coding-agent
+          npm pack
+          mv *.tgz ../../pi-custom-build.tgz
+
+      # 7. Get version for release tag
+      - name: Get version
+        if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        id: version
+        run: |
+          VERSION=$(node -p "require('./packages/coding-agent/package.json').version")
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          echo "tag=v${VERSION}-custom.${TIMESTAMP}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      # 8. Create GitHub Release with tarball
+      - name: Create Release
+        if: steps.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Custom Build ${{ steps.version.outputs.version }}"
+          body: |
+            Auto-built from upstream v${{ steps.version.outputs.version }} + custom patches.
+
+            **Install:**
+            ```
+            npm install -g ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/pi-custom-build.tgz
+            ```
+          files: pi-custom-build.tgz
