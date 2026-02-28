@@ -2606,7 +2606,7 @@ export class InteractiveMode {
 	private handleCtrlZ(): void {
 		// Ignore SIGINT while suspended so Ctrl+C in the terminal does not
 		// kill the backgrounded process. The handler is removed on resume.
-		const ignoreSigint = () => {};
+		const ignoreSigint = () => { };
 		process.on("SIGINT", ignoreSigint);
 
 		// Set up handler to restore TUI when resumed
@@ -2803,8 +2803,8 @@ export class InteractiveMode {
 	}
 
 	showNewVersionNotification(newVersion: string): void {
-		const action = theme.fg("accent", getUpdateInstruction("@mariozechner/pi-coding-agent"));
-		const updateInstruction = theme.fg("muted", `New version ${newVersion} is available. `) + action;
+		const action = theme.fg("accent", "/pi-update");
+		const updateInstruction = theme.fg("muted", `New version ${newVersion} is available. Run `) + action + theme.fg("muted", " to install from custom fork.");
 		const changelogUrl = theme.fg(
 			"accent",
 			"https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/CHANGELOG.md",
@@ -2933,8 +2933,7 @@ export class InteractiveMode {
 			this.compactionQueuedMessages = queuedMessages;
 			this.updatePendingMessagesDisplay();
 			this.showError(
-				`Failed to send queued message${queuedMessages.length > 1 ? "s" : ""}: ${
-					error instanceof Error ? error.message : String(error)
+				`Failed to send queued message${queuedMessages.length > 1 ? "s" : ""}: ${error instanceof Error ? error.message : String(error)
 				}`,
 			);
 		};
@@ -3992,9 +3991,9 @@ export class InteractiveMode {
 		const changelogMarkdown =
 			allEntries.length > 0
 				? allEntries
-						.reverse()
-						.map((e) => e.content)
-						.join("\n\n")
+					.reverse()
+					.map((e) => e.content)
+					.join("\n\n")
 				: "No changelog entries found.";
 
 		this.chatContainer.addChild(new Spacer(1));
@@ -4227,11 +4226,11 @@ export class InteractiveMode {
 		// Emit user_bash event to let extensions intercept
 		const eventResult = extensionRunner
 			? await extensionRunner.emitUserBash({
-					type: "user_bash",
-					command,
-					excludeFromContext,
-					cwd: process.cwd(),
-				})
+				type: "user_bash",
+				command,
+				excludeFromContext,
+				cwd: process.cwd(),
+			})
 			: undefined;
 
 		// If extension returned a full result, use it directly
