@@ -113,12 +113,12 @@ export type AgentSessionEvent =
 	| AgentEvent
 	| { type: "auto_compaction_start"; reason: "threshold" | "overflow" }
 	| {
-			type: "auto_compaction_end";
-			result: CompactionResult | undefined;
-			aborted: boolean;
-			willRetry: boolean;
-			errorMessage?: string;
-	  }
+		type: "auto_compaction_end";
+		result: CompactionResult | undefined;
+		aborted: boolean;
+		willRetry: boolean;
+		errorMessage?: string;
+	}
 	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
 	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string };
 
@@ -763,8 +763,8 @@ export class AgentSession {
 		if (!this.model) {
 			throw new Error(
 				"No model selected.\n\n" +
-					`Use /login or set an API key environment variable. See ${join(getDocsPath(), "providers.md")}\n\n` +
-					"Then use /model to select a model.",
+				`Use /login or set an API key environment variable. See ${join(getDocsPath(), "providers.md")}\n\n` +
+				"Then use /model to select a model.",
 			);
 		}
 
@@ -775,13 +775,13 @@ export class AgentSession {
 			if (isOAuth) {
 				throw new Error(
 					`Authentication failed for "${this.model.provider}". ` +
-						`Credentials may have expired or network is unavailable. ` +
-						`Run '/login ${this.model.provider}' to re-authenticate.`,
+					`Credentials may have expired or network is unavailable. ` +
+					`Run '/login ${this.model.provider}' to re-authenticate.`,
 				);
 			}
 			throw new Error(
 				`No API key found for ${this.model.provider}.\n\n` +
-					`Use /login or set an API key environment variable. See ${join(getDocsPath(), "providers.md")}`,
+				`Use /login or set an API key environment variable. See ${join(getDocsPath(), "providers.md")}`,
 			);
 		}
 
@@ -1005,11 +1005,11 @@ export class AgentSession {
 	 *
 	 * @param message Custom message with customType, content, display, details
 	 * @param options.triggerTurn If true and not streaming, triggers a new LLM turn
-	 * @param options.deliverAs Delivery mode: "steer", "followUp", or "nextTurn"
+	 * @param options.deliverAs Delivery mode: "steer", "followUp", "nextTurn", or "display"
 	 */
 	async sendCustomMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
-		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" | "display" },
 	): Promise<void> {
 		const appMessage = {
 			role: "custom" as const,
@@ -1019,7 +1019,19 @@ export class AgentSession {
 			details: message.details,
 			timestamp: Date.now(),
 		} satisfies CustomMessage<T>;
-		if (options?.deliverAs === "nextTurn") {
+		if (options?.deliverAs === "display") {
+			// Display-only: append to session + emit events immediately, no turn trigger.
+			// Works regardless of streaming state — safe for background monitors.
+			this.agent.appendMessage(appMessage);
+			this.sessionManager.appendCustomMessageEntry(
+				message.customType,
+				message.content,
+				message.display,
+				message.details,
+			);
+			this._emit({ type: "message_start", message: appMessage });
+			this._emit({ type: "message_end", message: appMessage });
+		} else if (options?.deliverAs === "nextTurn") {
 			this._pendingNextTurnMessages.push(appMessage);
 		} else if (this.isStreaming) {
 			if (options?.deliverAs === "followUp") {
@@ -1726,13 +1738,13 @@ export class AgentSession {
 				}
 
 				setTimeout(() => {
-					this.agent.continue().catch(() => {});
+					this.agent.continue().catch(() => { });
 				}, 100);
 			} else if (this.agent.hasQueuedMessages()) {
 				// Auto-compaction can complete while follow-up/steering/custom messages are waiting.
 				// Kick the loop so queued messages are actually delivered.
 				setTimeout(() => {
-					this.agent.continue().catch(() => {});
+					this.agent.continue().catch(() => { });
 				}, 100);
 			}
 		} catch (error) {
@@ -1968,9 +1980,9 @@ export class AgentSession {
 		const baseTools = this._baseToolsOverride
 			? this._baseToolsOverride
 			: createAllTools(this._cwd, {
-					read: { autoResizeImages },
-					bash: { commandPrefix: shellCommandPrefix },
-				});
+				read: { autoResizeImages },
+				bash: { commandPrefix: shellCommandPrefix },
+			});
 
 		this._baseToolRegistry = new Map(Object.entries(baseTools).map(([name, tool]) => [name, tool as AgentTool]));
 
@@ -1986,12 +1998,12 @@ export class AgentSession {
 		this._extensionRunner =
 			hasExtensions || hasCustomTools
 				? new ExtensionRunner(
-						extensionsResult.extensions,
-						extensionsResult.runtime,
-						this._cwd,
-						this.sessionManager,
-						this._modelRegistry,
-					)
+					extensionsResult.extensions,
+					extensionsResult.runtime,
+					this._cwd,
+					this.sessionManager,
+					this._modelRegistry,
+				)
 				: undefined;
 		if (this._extensionRunnerRef) {
 			this._extensionRunnerRef.current = this._extensionRunner;
@@ -2232,13 +2244,13 @@ export class AgentSession {
 		try {
 			const result = options?.operations
 				? await executeBashWithOperations(resolvedCommand, process.cwd(), options.operations, {
-						onChunk,
-						signal: this._bashAbortController.signal,
-					})
+					onChunk,
+					signal: this._bashAbortController.signal,
+				})
 				: await executeBashCommand(resolvedCommand, {
-						onChunk,
-						signal: this._bashAbortController.signal,
-					});
+					onChunk,
+					signal: this._bashAbortController.signal,
+				});
 
 			this.recordBashResult(command, result, options);
 			return result;
@@ -2610,9 +2622,9 @@ export class AgentSession {
 				typeof targetEntry.content === "string"
 					? targetEntry.content
 					: targetEntry.content
-							.filter((c): c is { type: "text"; text: string } => c.type === "text")
-							.map((c) => c.text)
-							.join("");
+						.filter((c): c is { type: "text"; text: string } => c.type === "text")
+						.map((c) => c.text)
+						.join("");
 		} else {
 			// Non-user message: leaf = selected node
 			newLeafId = targetId;
