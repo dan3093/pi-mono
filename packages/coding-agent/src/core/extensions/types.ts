@@ -1003,7 +1003,7 @@ export interface ExtensionAPI {
 	/** Send a custom message to the session. */
 	sendMessage<T = unknown>(
 		message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
-		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+		options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" | "display" },
 	): void;
 
 	/**
@@ -1226,7 +1226,7 @@ type HandlerFn = (...args: unknown[]) => Promise<unknown>;
 
 export type SendMessageHandler = <T = unknown>(
 	message: Pick<CustomMessage<T>, "customType" | "content" | "display" | "details">,
-	options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+	options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" | "display" },
 ) => void;
 
 export type SendUserMessageHandler = (
@@ -1335,7 +1335,7 @@ export interface ExtensionCommandContextActions {
  * Full runtime = state + actions.
  * Created by loader with throwing action stubs, completed by runner.initialize().
  */
-export interface ExtensionRuntime extends ExtensionRuntimeState, ExtensionActions {}
+export interface ExtensionRuntime extends ExtensionRuntimeState, ExtensionActions { }
 
 /** Loaded extension with all registered items. */
 export interface Extension {
