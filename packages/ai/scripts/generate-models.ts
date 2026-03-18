@@ -799,6 +799,52 @@ async function generateModels() {
 		});
 	}
 
+	// Add missing MiniMax M2.7 models until models.dev includes them.
+	const minimaxM27Variants = [
+		{ provider: "minimax" as const, baseUrl: "https://api.minimax.io/anthropic" },
+		{ provider: "minimax-cn" as const, baseUrl: "https://api.minimaxi.com/anthropic" },
+	];
+	for (const { provider, baseUrl } of minimaxM27Variants) {
+		if (!allModels.some(m => m.provider === provider && m.id === "MiniMax-M2.7")) {
+			allModels.push({
+				id: "MiniMax-M2.7",
+				name: "MiniMax M2.7",
+				api: "anthropic-messages",
+				provider,
+				baseUrl,
+				reasoning: true,
+				input: ["text"],
+				cost: {
+					input: 0.3,
+					output: 1.2,
+					cacheRead: 0.06,
+					cacheWrite: 0.375,
+				},
+				contextWindow: 204800,
+				maxTokens: 131072,
+			});
+		}
+		if (!allModels.some(m => m.provider === provider && m.id === "MiniMax-M2.7-highspeed")) {
+			allModels.push({
+				id: "MiniMax-M2.7-highspeed",
+				name: "MiniMax M2.7 Highspeed",
+				api: "anthropic-messages",
+				provider,
+				baseUrl,
+				reasoning: true,
+				input: ["text"],
+				cost: {
+					input: 0.6,
+					output: 2.4,
+					cacheRead: 0.06,
+					cacheWrite: 0.375,
+				},
+				contextWindow: 204800,
+				maxTokens: 131072,
+			});
+		}
+	}
+
 	// Add missing gpt models
 	if (!allModels.some(m => m.provider === "openai" && m.id === "gpt-5-chat-latest")) {
 		allModels.push({
