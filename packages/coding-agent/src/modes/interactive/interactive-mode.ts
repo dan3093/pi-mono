@@ -38,6 +38,7 @@ import {
 import { spawn, spawnSync } from "child_process";
 import {
 	APP_NAME,
+	getAgentDir,
 	getAuthPath,
 	getDebugLogPath,
 	getShareViewerUrl,
@@ -56,7 +57,8 @@ import type {
 import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.js";
 import { type AppAction, KeybindingsManager } from "../../core/keybindings.js";
 import { createCompactionSummaryMessage } from "../../core/messages.js";
-import { resolveModelScope } from "../../core/model-resolver.js";
+import { findExactModelReferenceMatch, resolveModelScope } from "../../core/model-resolver.js";
+import { DefaultPackageManager } from "../../core/package-manager.js";
 import type { ResourceDiagnostic } from "../../core/resource-loader.js";
 import { type SessionContext, SessionManager } from "../../core/session-manager.js";
 import { BUILTIN_SLASH_COMMANDS } from "../../core/slash-commands.js";
@@ -512,6 +514,13 @@ export class InteractiveMode {
 			}
 		});
 
+		// Start package update check asynchronously
+		this.checkForPackageUpdates().then((updates) => {
+			if (updates.length > 0) {
+				this.showPackageUpdateNotification(updates);
+			}
+		});
+
 		// Check tmux keyboard setup asynchronously
 		this.checkTmuxKeyboardSetup().then((warning) => {
 			if (warning) {
@@ -593,6 +602,24 @@ export class InteractiveMode {
 		}
 	}
 
+	private async checkForPackageUpdates(): Promise<string[]> {
+		if (process.env.PI_OFFLINE) {
+			return [];
+		}
+
+		try {
+			const packageManager = new DefaultPackageManager({
+				cwd: process.cwd(),
+				agentDir: getAgentDir(),
+				settingsManager: this.settingsManager,
+			});
+			const updates = await packageManager.checkForAvailableUpdates();
+			return updates.map((update) => update.displayName);
+		} catch {
+			return [];
+		}
+	}
+
 	private async checkTmuxKeyboardSetup(): Promise<string | undefined> {
 		if (!process.env.TMUX) return undefined;
 
@@ -625,6 +652,9 @@ export class InteractiveMode {
 			runTmuxShow("extended-keys"),
 			runTmuxShow("extended-keys-format"),
 		]);
+
+		// If we couldn't query tmux (timeout, sandbox, etc.), don't warn
+		if (extendedKeys === undefined) return undefined;
 
 		if (extendedKeys !== "on" && extendedKeys !== "always") {
 			return "tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf and restart tmux.";
@@ -2884,6 +2914,24 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
+	showPackageUpdateNotification(packages: string[]): void {
+		const action = theme.fg("accent", `${APP_NAME} update`);
+		const updateInstruction = theme.fg("muted", "Package updates are available. Run ") + action;
+		const packageLines = packages.map((pkg) => `- ${pkg}`).join("\n");
+
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
+		this.chatContainer.addChild(
+			new Text(
+				`${theme.bold(theme.fg("warning", "Package Updates Available"))}\n${updateInstruction}\n${theme.fg("muted", "Packages:")}\n${packageLines}`,
+				1,
+				0,
+			),
+		);
+		this.chatContainer.addChild(new DynamicBorder((text) => theme.fg("warning", text)));
+		this.ui.requestRender();
+	}
+
 	/**
 	 * Get all queued messages (read-only).
 	 * Combines session queue and compaction queue.
@@ -3243,30 +3291,8 @@ export class InteractiveMode {
 	}
 
 	private async findExactModelMatch(searchTerm: string): Promise<Model<any> | undefined> {
-		const term = searchTerm.trim();
-		if (!term) return undefined;
-
-		let targetProvider: string | undefined;
-		let targetModelId = "";
-
-		if (term.includes("/")) {
-			const parts = term.split("/", 2);
-			targetProvider = parts[0]?.trim().toLowerCase();
-			targetModelId = parts[1]?.trim().toLowerCase() ?? "";
-		} else {
-			targetModelId = term.toLowerCase();
-		}
-
-		if (!targetModelId) return undefined;
-
 		const models = await this.getModelCandidates();
-		const exactMatches = models.filter((item) => {
-			const idMatch = item.id.toLowerCase() === targetModelId;
-			const providerMatch = !targetProvider || item.provider.toLowerCase() === targetProvider;
-			return idMatch && providerMatch;
-		});
-
-		return exactMatches.length === 1 ? exactMatches[0] : undefined;
+		return findExactModelReferenceMatch(searchTerm, models);
 	}
 
 	private async getModelCandidates(): Promise<Model<any>[]> {
@@ -3812,9 +3838,14 @@ export class InteractiveMode {
 
 		this.resetExtensionUI();
 
-		const loader = new BorderedLoader(this.ui, theme, "Reloading extensions, skills, prompts, themes...", {
-			cancellable: false,
-		});
+		const loader = new BorderedLoader(
+			this.ui,
+			theme,
+			"Reloading keybindings, extensions, skills, prompts, themes...",
+			{
+				cancellable: false,
+			},
+		);
 		const previousEditor = this.editor;
 		this.editorContainer.clear();
 		this.editorContainer.addChild(loader);
@@ -3831,6 +3862,7 @@ export class InteractiveMode {
 
 		try {
 			await this.session.reload();
+			this.keybindings.reload();
 			setRegisteredThemes(this.session.resourceLoader.getThemes().themes);
 			this.hideThinkingBlock = this.settingsManager.getHideThinkingBlock();
 			const themeName = this.settingsManager.getTheme();
@@ -3864,7 +3896,7 @@ export class InteractiveMode {
 			if (modelsJsonError) {
 				this.showError(`models.json error: ${modelsJsonError}`);
 			}
-			this.showStatus("Reloaded extensions, skills, prompts, themes");
+			this.showStatus("Reloaded keybindings, extensions, skills, prompts, themes");
 		} catch (error) {
 			dismissLoader(previousEditor as Component);
 			this.showError(`Reload failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -4102,6 +4134,10 @@ export class InteractiveMode {
 
 	private handleHotkeysCommand(): void {
 		// Navigation keybindings
+		const cursorUp = this.getEditorKeyDisplay("cursorUp");
+		const cursorDown = this.getEditorKeyDisplay("cursorDown");
+		const cursorLeft = this.getEditorKeyDisplay("cursorLeft");
+		const cursorRight = this.getEditorKeyDisplay("cursorRight");
 		const cursorWordLeft = this.getEditorKeyDisplay("cursorWordLeft");
 		const cursorWordRight = this.getEditorKeyDisplay("cursorWordRight");
 		const cursorLineStart = this.getEditorKeyDisplay("cursorLineStart");
@@ -4134,14 +4170,16 @@ export class InteractiveMode {
 		const expandTools = this.getAppKeyDisplay("expandTools");
 		const toggleThinking = this.getAppKeyDisplay("toggleThinking");
 		const externalEditor = this.getAppKeyDisplay("externalEditor");
+		const cycleModelBackward = this.getAppKeyDisplay("cycleModelBackward");
 		const followUp = this.getAppKeyDisplay("followUp");
 		const dequeue = this.getAppKeyDisplay("dequeue");
+		const pasteImage = this.getAppKeyDisplay("pasteImage");
 
 		let hotkeys = `
 **Navigation**
 | Key | Action |
 |-----|--------|
-| \`Arrow keys\` | Move cursor / browse history (Up when empty) |
+| \`${cursorUp}\` / \`${cursorDown}\` / \`${cursorLeft}\` / \`${cursorRight}\` | Move cursor / browse history (Up when empty) |
 | \`${cursorWordLeft}\` / \`${cursorWordRight}\` | Move by word |
 | \`${cursorLineStart}\` | Start of line |
 | \`${cursorLineEnd}\` | End of line |
@@ -4171,14 +4209,14 @@ export class InteractiveMode {
 | \`${exit}\` | Exit (when editor is empty) |
 | \`${suspend}\` | Suspend to background |
 | \`${cycleThinkingLevel}\` | Cycle thinking level |
-| \`${cycleModelForward}\` | Cycle models |
+| \`${cycleModelForward}\` / \`${cycleModelBackward}\` | Cycle models |
 | \`${selectModel}\` | Open model selector |
 | \`${expandTools}\` | Toggle tool output expansion |
 | \`${toggleThinking}\` | Toggle thinking block visibility |
 | \`${externalEditor}\` | Edit message in external editor |
 | \`${followUp}\` | Queue follow-up message |
 | \`${dequeue}\` | Restore queued messages |
-| \`Ctrl+V\` | Paste image from clipboard |
+| \`${pasteImage}\` | Paste image from clipboard |
 | \`/\` | Slash commands |
 | \`!\` | Run bash command |
 | \`!!\` | Run bash command (excluded from context) |

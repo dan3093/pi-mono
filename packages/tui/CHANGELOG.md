@@ -2,8 +2,36 @@
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-03-18
+
 ### Fixed
 
+- Fixed tmux xterm `modifyOtherKeys` matching for `Backspace`, `Escape`, and `Space`, and resolved raw `\x08` backspace ambiguity by treating Windows Terminal sessions differently from legacy terminals ([#2293](https://github.com/badlogic/pi-mono/issues/2293))
+
+## [0.59.0] - 2026-03-17
+
+## [0.58.4] - 2026-03-16
+
+## [0.58.3] - 2026-03-15
+
+## [0.58.2] - 2026-03-15
+
+### Added
+
+- Added configurable `SelectList` primary column sizing via `SelectListLayoutOptions`, including custom primary-label truncation hooks ([#2154](https://github.com/badlogic/pi-mono/pull/2154) by [@markusylisiurunen](https://github.com/markusylisiurunen))
+
+### Fixed
+
+- Fixed stale scrollback remaining after full-screen redraws such as session switches by clearing the screen before wiping scrollback ([#2155](https://github.com/badlogic/pi-mono/pull/2155) by [@Perlence](https://github.com/Perlence))
+- Fixed trailing blank lines after markdown block elements when they are followed immediately by the next block or end of document ([#2152](https://github.com/badlogic/pi-mono/pull/2152) by [@markusylisiurunen](https://github.com/markusylisiurunen))
+
+## [0.58.1] - 2026-03-14
+
+### Fixed
+
+- Fixed Windows shell and path handling in autocomplete to properly handle drive letters and mixed path separators
+- Fixed editor paste to preserve literal content instead of normalizing newlines, preventing content corruption for text with embedded escape sequences ([#2064](https://github.com/badlogic/pi-mono/issues/2064))
+- Fixed tab completion to preserve `./` prefix when completing relative paths ([#2087](https://github.com/badlogic/pi-mono/issues/2087))
 - Fixed `ctrl+backspace` being indistinguishable from plain `backspace` on Windows Terminal. `0x08` is now recognized as `ctrl+backspace` instead of `backspace`, making `ctrl+backspace` bindable on terminals where it produces a distinct byte ([#2139](https://github.com/badlogic/pi-mono/issues/2139))
 
 ## [0.58.0] - 2026-03-14
